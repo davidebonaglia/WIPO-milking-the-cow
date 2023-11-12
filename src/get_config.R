@@ -1,8 +1,8 @@
 ## %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## GII Data
 ## src/get_config.R
-## Jack Gregory & Davide Bonaglia
-## 27 November 2021
+## avide Bonaglia - revision
+## 3 March 2022
 ## %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 

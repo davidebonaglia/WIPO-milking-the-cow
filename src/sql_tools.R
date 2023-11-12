@@ -1,7 +1,7 @@
 ## %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## GII Data
 ## src/sql_tools.R
-## Davide Bonaglia
+## Davide Bonaglia - revision
 ## 2 February 2023
 ## %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
