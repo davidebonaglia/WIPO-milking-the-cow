@@ -1,8 +1,8 @@
 ## %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## GII Data
 ## src/get_config.R
-## avide Bonaglia - revision
-## 3 March 2022
+## Davide Bonaglia - revision
+## 3 March 2023
 ## %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
