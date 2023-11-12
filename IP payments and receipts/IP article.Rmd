@@ -1,0 +1,494 @@
+---
+title: "IP payments and receipts"
+author: "Davide Bonaglia"
+date: "`r Sys.Date()`"
+description: "This markdown stores the code to replicate the IP article"
+output: html_document
+---
+
+# Cross-border payments for the use of Intellectual Property
+
+Link to the article: `https://www.wipo.int/global_innovation_index/en/gii-insights-blog/2023/cross-border-payments.html`
+
+```{r import libraries, include=FALSE}
+
+library(dplyr) 
+library(ggplot2)
+library(scales)
+library(readr)
+
+#source(here::here("src/sql_tools.R"))
+
+```
+
+## GII Economies
+
+Import only 132 GII economies
+Source: WIPO website, GII 2022 page - related documents: `https://www.wipo.int/publications/en/details.jsp?id=4622`
+```{r df.econ}
+
+df.econ <- readxl::read_excel("/Users/davidebonaglia/Documents/WIPO-milking-the-cow/IP payments and receipts/Data/GII2022.xlsx", 
+                              sheet = "Economies") %>% 
+  select(ISO3, ECONOMY_NAME, INCOME, REG_UN)
+
+df.econ
+```
+
+## Figure 1 - time series
+
+### World Bank data - based on IMF Balance of Payments Statistics Yearbook
+
+Source: WorldBank: `https://databank.worldbank.org/reports.aspx?source=2&series=BM.GSR.ROYL.CD&country=#` - both series, from 1980 to 2021, countries and aggregate. This data is based on the International Monetary Fund (IMF), Balance of Payments Statistics Yearbook
+
+```{r codes}
+
+## WB codes
+IntelPropPay <- "BM.GSR.ROYL.CD"
+IntelPropRec <- "BX.GSR.ROYL.CD"
+
+```
+
+```{r }
+
+# Import World Bank Data
+IMF <- readxl::read_excel("/Users/davidebonaglia/Documents/WIPO-milking-the-cow/IP payments and receipts/Data/P_Data_Extract_From_World_Development_Indicators.xlsx")
+
+IMF
+```
+
+```{r }
+
+IMF.world <- IMF %>% 
+  ## Filter only World aggregate
+  filter(`Country Name` == "World") %>% 
+  
+  ## Create CODE column
+  mutate(CODE = if_else(`Series Code` == IntelPropPay, "IntelPropPay", "IntelPropRec")) %>% 
+  
+  ## Rename columns
+  rename_with(~paste0(substr(names(IMF)[5:ncol(IMF)], 1, 4), ""), 5:46) %>% 
+  
+  ## Pivot longer by ISO3
+  tidyr::pivot_longer(cols = c(`1980`:`2021`), 
+                      names_to = "DATAYR", 
+                      values_to = "VALUE_UNSCALED") %>% 
+  select(ISO3 = `Country Code`,
+         CODE,
+         DATAYR,
+         VALUE_UNSCALED) %>% 
+  
+  ## Change type of some variables
+  mutate(DATAYR = as.integer(DATAYR),
+         VALUE_UNSCALED = as.double(VALUE_UNSCALED))
+
+IMF.world
+```
+
+```{r }
+
+## Filer data set
+figure1 <- IMF.world %>% 
+  
+  ## Aggregate by DATAYR
+  group_by(ISO3, DATAYR) %>% 
+  
+  ## Compute total
+  summarise(TOT = sum(VALUE_UNSCALED)) %>% 
+  mutate(TOT = TOT/10^9) %>% 
+  mutate(CODE = "Import + Exports") %>% 
+  ungroup() %>% 
+  filter(DATAYR >= 1980)
+
+## Set parameters 
+col_fig1 <- c("#4288DE")
+background <- "#FFFFFF" 
+font <- "Georgia"
+covid19col <- "#CA00DF"
+
+## Filter covid19 data - for annotation on the figure
+data_subset <- figure1 %>% 
+  filter(DATAYR %in% c(2019, 2020, 2021)) %>% 
+  mutate(LABELS = format((round(TOT)+1), big.mark = ",", nsmall = 0)) %>% 
+  mutate(LABELS = if_else(LABELS == "849", "           849  ", LABELS)) %>% 
+  mutate(LABELS = if_else(LABELS == "855", "855   ", LABELS))
+
+## Filter data again - for annotation on the figure
+data_subset2 <- figure1 %>% 
+  filter(DATAYR %in% c(1980, 1990, 2000, 2010)) %>% 
+  mutate(LABELS = format((round(TOT)+1), big.mark = ",", nsmall = 0))
+  
+
+# Create a ggplot object with the data_long data frame
+fig1 <- ggplot(figure1, aes(x = DATAYR, y = TOT, color = CODE)) +
+  
+  # Add a red rectangle to highlight the COVID-19 period - 
+  annotate("rect", xmin = 2020, xmax = 2021, ymin = -Inf, ymax = Inf, 
+           fill = covid19col, alpha = 0.2) +
+  
+  geom_line(linewidth = 1.5) +
+  
+  geom_point(size = 3) + 
+  labs(x = "Year", y = "Billion USD",
+       x = element_text(family = font, size = 12),
+       y = element_text(family = font, size = 12)) +
+
+  scale_y_continuous(labels = comma) +
+  scale_color_manual(values = col_fig1) +
+  theme(panel.grid = element_blank(),
+        panel.background = element_rect(fill = background),
+        plot.background = element_rect(fill = background),
+        legend.background = element_rect(fill = background),
+        legend.key = element_rect(fill = background),
+        axis.text = element_text(family = font, size = 12),
+        axis.title = element_text(family = font, size = 12, face = "bold"),
+        legend.text = element_text(family = font, size = 12),
+        plot.caption = element_text(family = font, size = 8, hjust = 0),
+        axis.line.x = element_line(),
+        axis.ticks.y = element_blank()) +
+  guides(color = "none") +
+  
+  # Add text labels for the years and manually adjust them
+  geom_text(data = filter(data_subset, DATAYR %in% c(2019, 2020, 2021)), aes(label = LABELS), color="#040C0C",
+            hjust = 0.4, vjust = -0.7,  size = 3.5, family = font, fontface = "bold") +
+  
+  geom_text(data = filter(data_subset2, DATAYR %in% c(1990)), aes(label = LABELS), color="#040C0C",
+            hjust = 0.4, vjust = -1,  size = 3.5, family = font, fontface = "bold") +
+  
+  geom_text(data = filter(data_subset2, DATAYR %in% c(1980, 2000)), aes(label = LABELS), color="#040C0C",
+            hjust = 0.4, vjust = -0.7,  size = 3.5, family = font, fontface = "bold") +
+  
+  geom_text(data = filter(data_subset2, DATAYR %in% c(2010)), aes(label = LABELS), color="#040C0C",
+            hjust = 1, vjust = -1,  size = 3.5, family = font, fontface = "bold") +
+  
+  # Add a label to the rectangle
+  annotate("text", x = 2016.65, y = min(figure1$TOT), 
+           label = "COVID-19", fontface = "bold", size = 3.5, color = "#040C0C", hjust = 0, vjust = 0, family = font)
+
+## Save figure
+ggsave("/Users/davidebonaglia/Documents/WIPO-milking-the-cow/IP payments and receipts/Figures/Fig1.png", plot = fig1, width = 10, height = 6, dpi = 300)
+```
+
+## Figure 2 - Unscaled Value VS Scaled value
+
+### WTO data
+Source: World Trade Organization (WTO) and United Nations Conference on Trade and Development, Trade in Commercial Services database: `https://stats.wto.org/`
+
+```{r codes}
+
+## WTO codes
+IntelPropPay <- "ITS_CS_AM6"
+IntelPropRec <- "ITS_CS_AX6"
+
+```
+
+```{r }
+
+# Import WTO Data
+WTO.world <- read_csv("/Users/davidebonaglia/Documents/WIPO-milking-the-cow/IP payments and receipts/Data/WtoData_20230316111633.csv", col_types = cols()) %>% 
+  
+  ## Filter only the IP data
+  filter(`Product/Sector Code` == "SH") %>% 
+  
+  ## Filter for World aggregate
+  filter(`Reporting Economy` == "World") %>% 
+  
+  select(ECONOMY_NAME = `Reporting Economy`,
+         DATAYR = Year,
+         `Indicator Code`,
+         UNSCALED_VALUE = Value) %>% 
+  
+  ## Filter time window 
+  filter(DATAYR >= 2005) %>% 
+  
+  ## Aggregate
+  group_by(ECONOMY_NAME, DATAYR) %>% 
+  summarise(TOT = sum(UNSCALED_VALUE)) %>% 
+  ungroup() %>% 
+  
+  arrange(ECONOMY_NAME, DATAYR)
+
+WTO.world
+```
+
+### Scaling Factor
+
+```{r scaling factor}
+
+## Read WTO Total Trade data
+sf.wrl <- readxl::read_excel("/Users/davidebonaglia/Documents/WIPO-milking-the-cow/IP payments and receipts/Data/Goods and commercial services 2012-2021 (UNITS).xlsx", skip = 4) %>% 
+  
+  ## Filter for World
+  filter(`REPORTER_COUNTRY` == "World") %>% 
+  filter(INDICATOR_DESC_UK == "Commercial services") %>% 
+  
+  group_by(REPORTER_COUNTRY, YEAR) %>% 
+  summarise(SCALE_FACTOR = sum(INDICATOR_VALUES)) %>% 
+  ungroup() %>% 
+  
+  rename(ECONOMY_NAME = REPORTER_COUNTRY,
+         DATAYR = YEAR)
+
+sf.wrl
+```
+
+```{r }
+
+figure2 <- WTO.world %>% 
+  
+  ## join with sf.wrl to add scaling factor
+  inner_join(sf.wrl, by = c("ECONOMY_NAME", "DATAYR")) %>% 
+  mutate(SCALED_VALUE = TOT/SCALE_FACTOR,
+         CODE = "Imports + Exports") %>% 
+  select(CODE, DATAYR, UNSCALED_VALUE = TOT, SCALED_VALUE) %>% 
+  mutate(SCALED_VALUE = SCALED_VALUE*100,
+         UNSCALED_VALUE = UNSCALED_VALUE/ 10^3)
+
+## Set parameters
+col_fig2 <- c("#4288DE", "#CA00DF")
+background <- "#FFFFFF" 
+font <- "Georgia"
+
+## Filter data set - for annotation on the figure
+data_subset <- figure2 %>% 
+  filter(DATAYR %in% c(2012, 2020, 2021)) %>% 
+  mutate(LABELS_UN = format((round(UNSCALED_VALUE)+1), big.mark = ",", nsmall = 0),
+         LABELS_SC = format((round(SCALED_VALUE, 2)), big.mark = "", nsmall = 0)) %>% 
+  mutate(LABELS_SC = paste0(LABELS_SC, "%"))
+
+# Create a ggplot object with the data_long data frame
+fig2 <- ggplot(data = figure2, aes(x = DATAYR)) +
+  
+  # UNSCALED_VALUE 
+  geom_line(aes(y = UNSCALED_VALUE, color = "Total Charges for IP"), linewidth = 1.5) +
+  
+  # SCALED_VALUE plot
+  geom_line(aes(y = SCALED_VALUE*55, color = "Total Charges for IP, % total trade"), linewidth = 1.5) +
+  
+  scale_color_manual(values = col_fig2, 
+                     labels = c("Volume of IP Receipts and 
+Payments (Billion USD)", 
+                                "Share of Total Trade in
+Commercial Services (%)")) +
+  
+  scale_y_continuous(
+    name = "",
+    sec.axis = sec_axis(~./55, 
+                        name = "", 
+                        labels = function(x) paste0(x, "%")),
+    labels = comma) +
+  
+  labs(
+    x = "Year",
+    y = "UNSCALED_VALUE",
+    color = "") +
+  
+  theme(panel.grid = element_blank(),
+        panel.background = element_rect(fill = background),
+        plot.background = element_rect(fill = background),
+        legend.background = element_rect(fill = background),
+        legend.key = element_rect(fill = background),
+        axis.text = element_text(family = font, size = 12),
+        axis.title = element_text(family = font, size = 12, face = "bold"),
+        legend.text = element_text(family = font, size = 12),
+        plot.caption = element_text(family = font, size = 8, hjust = 0),
+        axis.line.x = element_line(),
+        axis.text.y.left = element_text(color = "#4288DE", face = "bold"),
+        axis.text.y.right = element_text(color = "#CA00DF", face = "bold"),
+        axis.ticks.y = element_blank()) +
+  
+  geom_text(data = filter(data_subset, DATAYR %in% c(2012, 2020)), 
+            aes(y = SCALED_VALUE*55, label = LABELS_SC), color="#CA00DF",
+            hjust = 0.3, vjust = -1,  size = 3, family = font, fontface = "bold")  +
+  
+  geom_text(data = filter(data_subset, DATAYR %in% c(2021)), 
+            aes(y = SCALED_VALUE*55, label = LABELS_SC), color="#CA00DF",
+            hjust = 0.3, vjust = 1.5,  size = 3, family = font, fontface = "bold") +
+  
+  guides(color = guide_legend(keywidth = unit(1, "cm"),
+                              keyheight = unit(2.5, "lines"),
+                              label.position = "right",
+                              label.hjust = 0)) 
+
+
+## Save figure
+ggsave("/Users/davidebonaglia/Documents/WIPO-milking-the-cow/IP payments and receipts/Figures/Fig2.png", plot = fig2, width = 10, height = 6, dpi = 300)
+```
+
+## Figure 3 - Top 5 Economies per income group
+
+```{r df.scfact, message=TRUE}
+
+## Read WTO Total Trade data
+scaling.factor <- readxl::read_excel("/Users/davidebonaglia/Documents/WIPO-milking-the-cow/IP payments and receipts/Data/Goods and commercial services 2012-2021 (UNITS).xlsx", skip = 4)  %>% 
+  
+  filter(INDICATOR_DESC_UK == "Commercial services") %>% 
+  
+  # Dropping rows in case REPORTER_COUNTRY is empty
+  filter(!is.na(REPORTER_COUNTRY)) %>%
+  
+  select(CODE = INDICATOR_DESC_UK,
+         ECONOMY_NAME = REPORTER_COUNTRY, 
+         DATAYR = YEAR,
+         INDICATOR_VALUES) %>% 
+  arrange(ECONOMY_NAME, DATAYR) %>% 
+  
+  # Setting 0 to NA and converting from millions to dollars to match last year's units
+  mutate(SCALE = ifelse(INDICATOR_VALUES == 0, NA, INDICATOR_VALUES)) %>%
+
+  # Computing SCALE_FACTOR:
+  group_by(ECONOMY_NAME, DATAYR) %>%
+  summarise(SCALE_FACTOR = sum(SCALE), 
+            count = n_distinct(SCALE)) %>% 
+  ungroup() %>% 
+  
+  # We select only the economies that have full trade accounts (Import/Export for Commercial Services)
+  filter(count >= 2) %>%
+  
+  # Then, we divide by 2 to remove double counting of trade between countries
+  #mutate(SCALE_FACTOR = SCALE_FACTOR/200) %>%
+  
+  # Add ISO3 codes
+  mutate(ISO3 = countrycode::countrycode(ECONOMY_NAME, origin = 'country.name', destination = 'iso3c')) %>% 
+  
+  ## Set manually some ISO3 codes 
+  mutate(ISO3 = case_when(ECONOMY_NAME == "Lebanese Republic" ~ "LBN",
+                          ECONOMY_NAME == "Türkiye" ~ "TUR",
+                          ECONOMY_NAME == "World" ~ "WLD",
+                          TRUE ~ ISO3)) %>%
+  
+  ## Filter out when ISO3 is NA
+  filter(!is.na(ISO3)) %>% 
+  
+  select(ISO3, DATAYR, SCALE_FACTOR) %>% 
+  arrange(ISO3, DATAYR)
+
+scaling.factor
+```
+
+```{r}
+
+# Import WTO Data
+WTO <- readr::read_csv("/Users/davidebonaglia/Documents/WIPO-milking-the-cow/IP payments and receipts/Data/WtoData_20230316111633.csv", col_types = cols()) %>% 
+  
+  ## Filter only the IP data
+  filter(`Product/Sector Code` == "SH") %>% 
+  filter(`Indicator Code` == "ITS_CS_AX6") %>% 
+  
+  select(ISO3 = `Reporting Economy ISO3A Code`,
+         CODE = `Indicator Code`,
+         DATAYR = Year,
+         VALUE = Value) %>% 
+  inner_join(df.econ, by="ISO3") %>% 
+  
+  group_by(ISO3,ECONOMY_NAME,INCOME,REG_UN, DATAYR) %>% 
+  summarise(UNSCALED_VALUE = sum(VALUE)) %>% 
+  ungroup() %>% 
+  
+  inner_join(scaling.factor, by = c("ISO3", "DATAYR")) %>% 
+  mutate(SCALED_VALUE = UNSCALED_VALUE/SCALE_FACTOR) %>% 
+  
+  arrange(ISO3, DATAYR)
+  
+WTO
+```
+
+```{r}
+
+WTO.2021 <- WTO %>% 
+  filter(DATAYR == 2021) %>% 
+  arrange(REG_UN, desc(UNSCALED_VALUE)) %>%
+  
+  group_by(REG_UN)%>%
+  slice_head(n = 5) %>%
+  ungroup() %>% 
+  
+  select(ECONOMY_NAME, REG_UN, UNSCALED_VALUE)
+
+WTO.2021
+```
+
+```{r}
+
+figure3 <- WTO.2021 %>% 
+  filter(REG_UN == "Europe" | REG_UN == "Northern America" | REG_UN == "South East Asia, East Asia, and Oceania") %>% 
+  arrange(REG_UN, desc(UNSCALED_VALUE)) %>%
+  mutate(ECONOMY_NAME = factor(ECONOMY_NAME, levels = unique(ECONOMY_NAME))) %>% 
+  mutate(UNSCALED_VALUE = UNSCALED_VALUE/10^3) %>% 
+  mutate(LABELS = format((round(UNSCALED_VALUE)), big.mark = ".", nsmall = 0))
+
+
+col_fig3 <- c("#CA00DF", "#4288DE","#00CADF")
+background <- "#FFFFFF" 
+font <- "Georgia"
+  
+
+fig3 <- ggplot(figure3, aes(x = interaction(ECONOMY_NAME, REG_UN), y = UNSCALED_VALUE, fill = REG_UN)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 2)) +
+  labs(x = "",
+       y = "Billion USD",
+       y = element_text(family = font, size = 12)) +
+  scale_y_continuous(labels = comma) +
+  scale_x_discrete(labels = figure3$ECONOMY_NAME) +
+  scale_fill_manual(values = col_fig3) +
+  theme(panel.grid = element_blank(),
+        panel.background = element_rect(fill = background),
+        plot.background = element_rect(fill = background),
+        legend.background = element_rect(fill = background),
+        legend.key = element_rect(fill = background),
+        legend.text = element_text(family = font, size = 12),
+        legend.title = element_text(family = font, size = 12),
+        axis.text.x = element_text(family = font, size = 12, angle = 90, vjust = 0.5, hjust = 1.0),
+        axis.text.y = element_text(family = font, size = 12),
+        axis.title.y = element_text(family = font, size = 12, face = "bold"),
+        axis.line.x = element_line(),
+        axis.line.y = element_blank(),
+        plot.caption = element_text(family = font, size = 8, hjust = 0)) +
+  guides(fill = guide_legend(title = " ", ncol = 1))
+
+
+ggsave("/Users/davidebonaglia/Documents/WIPO-milking-the-cow/IP payments and receipts/Figures/fig3_1.png", plot = fig3, width = 10, height = 6, dpi = 300)
+```
+
+```{r}
+
+figure4 <- WTO.2021 %>% 
+  filter(REG_UN == "Sub-Saharan Africa" | REG_UN == "Central and Southern Asia" | REG_UN == "Latin America and the Caribbean" | REG_UN == "Northern Africa and Western Asia") %>% 
+  arrange(REG_UN, desc(UNSCALED_VALUE)) %>%
+  mutate(ECONOMY_NAME = factor(ECONOMY_NAME, levels = unique(ECONOMY_NAME))) %>% 
+  mutate(UNSCALED_VALUE = UNSCALED_VALUE/10^3) %>% 
+  mutate(LABELS = format((round(UNSCALED_VALUE)), big.mark = ",", nsmall = 0))
+
+
+col_fig4 <- c("#8546DF", "#CA00DF", "#4288DE","#00CADF")
+background <- "#FFFFFF" 
+font <- "Georgia"
+  
+
+fig4 <- ggplot(figure4, aes(x = interaction(ECONOMY_NAME, REG_UN), y = UNSCALED_VALUE, fill = REG_UN)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 2)) +
+  labs(x = "",
+       y = "Billion USD",
+       y = element_text(family = font, size = 12)) +
+  scale_y_continuous(labels = comma) +
+  scale_x_discrete(labels = figure4$ECONOMY_NAME) +
+  scale_fill_manual(values = col_fig4) +
+  theme(panel.grid = element_blank(),
+        panel.background = element_rect(fill = background),
+        plot.background = element_rect(fill = background),
+        legend.background = element_rect(fill = background),
+        legend.key = element_rect(fill = background),
+        legend.text = element_text(family = font, size = 12),
+        legend.title = element_text(family = font, size = 12),
+        axis.text.x = element_text(family = font, size = 12, angle = 90, vjust = 0.5, hjust = 1.0),
+        axis.text.y = element_text(family = font, size = 12),
+        axis.title.y = element_text(family = font, size = 12, face = "bold"),
+        axis.line.x = element_line(),
+        axis.line.y = element_blank(),
+        plot.caption = element_text(family = font, size = 8, hjust = 0)) +
+  guides(fill = guide_legend(title = " ", ncol = 1))
+
+
+ggsave("/Users/davidebonaglia/Documents/WIPO-milking-the-cow/IP payments and receipts/Figures/fig3_2.png", plot = fig4, width = 10, height = 6, dpi = 300)
+```
+
+All the other figures and tables contain confidential data that cannot be disclosed. 
